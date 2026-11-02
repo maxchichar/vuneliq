@@ -159,6 +159,14 @@ def test_logout_all_devices(client: TestClient):
     assert res1.status_code == 401
     assert res2.status_code == 401
 
+    # Device 2's ALREADY-ISSUED access token must ALSO be rejected immediately!
+    stale_access_res = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {session2['access_token']}"},
+    )
+    assert stale_access_res.status_code == 401
+    assert "revoked" in stale_access_res.json()["detail"].lower()
+
 
 def test_rbac_donor_cannot_access_admin_endpoint(client: TestClient):
     """Rule 5: Unauthorized users cannot perform reviewer/admin actions (403 Forbidden)."""

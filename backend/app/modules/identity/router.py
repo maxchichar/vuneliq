@@ -51,7 +51,7 @@ def login(request: UserLoginRequest, db: Session = Depends(get_db)):
 
     role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
     access_token = create_access_token(
-        data={"sub": str(user.id), "role": role_str, "email": user.email}
+        data={"sub": str(user.id), "ver":user.token_version, "role": role_str, "email": user.email}
     )
     refresh_token = create_refresh_token(db, user.id)
 
@@ -75,7 +75,7 @@ def refresh_token(request: TokenRefreshRequest, db: Session = Depends(get_db)):
     role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
     
     new_access_token = create_access_token(
-        data={"sub": str(user.id), "role": role_str, "email": user.email}
+        data={"sub": str(user.id), "ver": user.token_version, "role": role_str, "email": user.email}
     )
     return TokenRefreshResponse(access_token=new_access_token, token_type="bearer")
 
@@ -92,6 +92,9 @@ def logout_all(
     db: Session = Depends(get_db)
 ):
     """Revokes all active refresh tokens for the authenticated user (all devices)."""
+    current_user.token_version += 1
+    db.add(current_user)
+    
     revoked_count = revoke_all_user_tokens(db, current_user.id)
     return {"message": f"Successfully logged out of all devices ({revoked_count} sessions revoked)"}
 

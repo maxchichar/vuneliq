@@ -51,6 +51,15 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Invalidate token if user called logout-all
+    token_version = payload.get("ver")
+    if token_version is not None and token_version != user.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has been revoked. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return user
 
 def require_roles(*roles: UserRole) -> Callable[[User], User]:
