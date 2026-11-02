@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import secrets
 from typing import Any
 import bcrypt
 import jwt
@@ -40,4 +41,6 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     except jwt.PyJWTError:
         return None
 
-    
+def generate_secure_token() -> str:
+    """Generates a cryptographically strong, URL-safe random string for refresh tokens."""
+    return secrets.token_urlsafe(64)

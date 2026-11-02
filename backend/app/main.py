@@ -1,10 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import app.modules.identity.models
+from app.modules.identity.router import router as identity_router
 from app.shared.config import settings
+from app.shared.database import Base, engine
 
 
 def create_app() -> FastAPI:
+    # Ensure database tables exist (for AQLite dev/test)
+    Base.metadata.create_all(bind=engine)
+
     app = FastAPI(
         title=settings.APP_NAME,
         version="0.1.0",
@@ -19,6 +25,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Register module routers
+    app.include_router(identity_router, prefix="/api")
 
     @app.get("/health", tags=["System"])
     def healh_check():
