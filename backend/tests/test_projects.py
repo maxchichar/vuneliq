@@ -174,3 +174,63 @@ def test_rule_27_owner_cannot_approve_own_submission(client: TestClient, db_sess
     )
     assert approve_res.status_code == 400
     assert "cannot approve their own" in approve_res.json()["detail"].lower()
+
+
+def test_owner_edit_requeues_project_for_review(client: TestClient, db_session: Session):
+    """Owner editing an approved or changes_requested project resets status to pending_review."""
+    owner_token = create_test_user(client, "owner_requeue@vuneliq.org", "project_owner")
+    admin_token = create_admin_token(client, db_session, "admin_requeue@vuneliq.org")
+
+    # 1. Create project
+    create_res = client.post(
+        "/api/projects",
+        json=SAMPLE_PROJECT_PAYLOAD,
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    project_id = create_res.json()["id"]
+
+    # 2. Admin requests changes
+    client.post(
+        f"/api/admin/projects/{project_id}/review",
+        json={"action": "request_changes", "reason": "Please provide clearer budget details."},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    # 3. Owner updates the project
+    patch_res = client.patch(
+        f"/api/projects/{project_id}",
+        json={"budget_breakdown": "Drilling: 2.5m, Solar Pump: 1.5m, Filtration: 1.0m (Updated details)"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert patch_res.status_code == 200
+    # Status MUST be reset to pending_review!
+    assert patch_res.json()["status"] == "pending_review"
+
+    # 4. Verify it reappears in admin pending queue
+    pending_queue = client.get(
+        "/api/admin/projects/pending",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    ).json()
+    assert any(p["id"] == project_id for p in pending_queue)
+
+
+def test_reject_explicit_null_in_project_patch(client: TestClient):
+    """Explicit null for non-nullable fields must be rejected with 422, not cause a 500."""
+    owner_token = create_test_user(client, "null_tester@vuneliq.org", "project_owner")
+
+    create_res = client.post(
+        "/api/projects",
+        json=SAMPLE_PROJECT_PAYLOAD,
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    project_id = create_res.json()["id"]
+
+    # Attempt to send explicit null
+    patch_res = client.patch(
+        f"/api/projects/{project_id}",
+        json={"title": None},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    # Must return 422 Unprocessable Entity
+    assert patch_res.status_code == 422
+    assert "cannot be null" in patch_res.text

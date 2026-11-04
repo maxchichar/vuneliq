@@ -1,7 +1,9 @@
 from datetime import datetime
 import uuid
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.modules.projects.models import ProjectStatus, ReviewAction
+
 
 class ProjectCreateRequest(BaseModel):
     title: str = Field(..., min_length=5, max_length=255)
@@ -16,24 +18,21 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
-    title: str | None = Field(None, min_length=5, max_length=255)
-    description: str | None = Field(None, min_length=20)
-    category: str | None = Field(None, min_length=2, max_length=100)
-    location: str | None = Field(None, min_length=2, max_length=255)
-    beneficiary_target: str | None = Field(None, min_length=3, max_length=255)
-    intended_outcomes: str | None = Field(None, min_length=10)
-    budget_breakdown: str | None = Field(None, min_length=10)
+    title: str | None = Field(default=None, min_length=5, max_length=255)
+    description: str | None = Field(default=None, min_length=20)
+    category: str | None = Field(default=None, min_length=2, max_length=100)
+    location: str | None = Field(default=None, min_length=2, max_length=255)
+    beneficiary_target: str | None = Field(default=None, min_length=3, max_length=255)
+    intended_outcomes: str | None = Field(default=None, min_length=10)
+    budget_breakdown: str | None = Field(default=None, min_length=10)
 
-
-# Updating the funding target and currency is not allowed
-class ProjectUpdateRequest(BaseModel):
-    title: str | None = Field(None, min_length=5, max_length=255)
-    description: str | None = Field(None, min_length=20)
-    category: str | None = Field(None, min_length=2, max_length=100)
-    location: str | None = Field(None, min_length=2, max_length=255)
-    beneficiary_target: str | None = Field(None, min_length=3, max_length=255)
-    intended_outcomes: str | None = Field(None, min_length=10)
-    budget_breakdown: str | None = Field(None, min_length=10)
+    @field_validator("*", mode="before")
+    @classmethod
+    def reject_explicit_nulls(cls, value, info):
+        """Reject explicit nulls (e.g. {'title': null}) so non-nullable columns never receive None."""
+        if value is None:
+            raise ValueError(f"Field '{info.field_name}' cannot be null. Omit the field if not updating.")
+        return value
 
 
 class ProjectReviewRequest(BaseModel):
@@ -48,6 +47,7 @@ class ProjectReviewRead(BaseModel):
     action: ReviewAction
     reason: str
     created_at: datetime
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -67,4 +67,5 @@ class ProjectRead(BaseModel):
     status: ProjectStatus
     created_at: datetime
     updated_at: datetime
+
     model_config = ConfigDict(from_attributes=True)

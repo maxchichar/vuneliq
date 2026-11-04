@@ -60,10 +60,11 @@ def list_pending_projects(db: Session) -> list[Project]:
     stmt = select(Project).where(Project.status == ProjectStatus.PENDING_REVIEW)
     return list(db.scalars(stmt).all())
 
+
 def update_project(
     db: Session, project: Project, current_user_id: uuid.UUID, is_admin: bool, data: ProjectUpdateRequest
 ) -> Project:
-    """Rule 3: Only the project owner or an admin can edit a Project."""
+    """Rule 3: Only the project owner or an admin can edit a project."""
     if project.owner_id != current_user_id and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -74,6 +75,14 @@ def update_project(
     for field, value in update_dict.items():
         setattr(project, field, value)
 
+    # Requeue for review if modified by owner:
+    # If the project was approved, changes_requested, or draft, changes must be reviewed by an admin.
+    if not is_admin and project.status in (
+        ProjectStatus.APPROVED,
+        ProjectStatus.CHANGES_REQUESTED,
+        ProjectStatus.DRAFT,
+    ):
+        project.status = ProjectStatus.PENDING_REVIEW
 
     db.add(project)
     db.commit()
