@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.modules.identity.models
+import app.modules.projects.models
+
 from app.main import create_app
 from app.shared.database import Base, get_db
 
