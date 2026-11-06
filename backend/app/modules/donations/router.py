@@ -19,6 +19,9 @@ from app.modules.donations.services import (
 from app.modules.identity.models import User, UserRole
 from app.shared.database import get_db
 from app.shared.dependencies import get_current_user
+from app.shared.logging import get_module_logger
+
+logger = get_module_logger("donations")
 
 donations_router = APIRouter(tags=["Donations"])
 
@@ -82,6 +85,10 @@ def get_donation_details(
 
     is_admin = current_user.role == UserRole.ADMIN
     if donation.donor_id != current_user.id and not is_admin:
+        logger.warning(
+            "Unauthorized donation access attempt: user_id=%s tried to access donation_id=%s belonging to donor_id=%s",
+            current_user.id, donation.id, donation.donor_id
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You cannot view another donor's private donation details."

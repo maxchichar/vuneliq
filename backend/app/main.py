@@ -1,10 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-import app.modules.identity.models
-import app.modules.projects.models
-import app.modules.donations.models
-
 from app.modules.donations.router import donations_router
 from app.modules.identity.router import router as identity_router
 from app.modules.projects.router import (
@@ -14,10 +10,14 @@ from app.modules.projects.router import (
 )
 from app.shared.config import settings
 from app.shared.database import Base, engine
+from app.shared.logging import setup_logging
 
 
 def create_app() -> FastAPI:
-    # Ensure database tables exist (for AQLite dev/test)
+    # Initialize structured module logging
+    setup_logging(settings.LOG_LEVEL)
+
+    # Ensure database tables exist (for SQLite dev/test)
     Base.metadata.create_all(bind=engine)
 
     app = FastAPI(

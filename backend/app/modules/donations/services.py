@@ -13,6 +13,9 @@ from app.modules.donations.models import (
 )
 from app.modules.donations.schemas import DonationCreateRequest, PaymentSimulateRequest
 from app.modules.projects.models import Project, ProjectStatus
+from app.shared.logging import get_module_logger
+
+logger = get_module_logger("donations")
 
 def initiate_donation(
         db: Session, 
@@ -33,6 +36,10 @@ def initiate_donation(
         existing_donation = db.scalar(existing_stmt)
         if existing_donation:
             if existing_donation.donor_id != donor_id:
+                logger.warning(
+                    "Idempotency key collision/hijack attempt: key=%s requester=%s owner=%s",
+                    idempotency_key, donor_id, existing_donation.donor_id
+                )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Idempotency key belongs to another user."
@@ -44,11 +51,16 @@ def initiate_donation(
                 or existing_donation.amount != data.amount
                 or existing_donation.currency != normalised_currency
             ):
+                logger.warning(
+                    "Idempotency payload mutation rejected: key=%s amount=%s project=%s",
+                    idempotency_key, data.amount, project_id
+                )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Idempotency key already used with different request parameters."
                 )
-                
+
+            logger.info("Idempotent replay: returning existing donation id=%s", existing_donation.id)
             return existing_donation, existing_donation.payments[0]
 
     # Check project eligibility
@@ -61,6 +73,10 @@ def initiate_donation(
     # Currency match validation
     normalised_currency = data.currency.upper().strip()
     if normalised_currency != project.currency.upper().strip():
+        logger.warning(
+            "Currency mismatch: project=%s accepts %s, but received %s",
+            project_id, project.currency, data.currency
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Currency mismatch: Project accepts {project.currency}, but received {data.currency}."
@@ -111,11 +127,16 @@ def initiate_donation(
         db.commit()
         db.refresh(donation)
         db.refresh(payment)
+        logger.info(
+            "Donation initiated successfully: donation_id=%s payment_id=%s amount=%s currency=%s project_id=%s",
+            donation.id, payment.id, donation.amount, donation.currency, project_id
+        )
         return donation, payment
 
-    except Exception: 
+    except Exception as exc: 
         # Atomic rollback
         db.rollback()
+        logger.error("Atomic transaction rollback during donation initiation: error=%s", exc)
         raise
 
 def process_payment_confirmation(
@@ -141,6 +162,10 @@ def process_payment_confirmation(
     # Guard: Terminal failure/cancellation cannot be overwritten
     if payment.status in (PaymentStatus.FAILED, PaymentStatus.CANCELLED):
         if data.status != payment.status:
+            logger.warning(
+                "Invalid terminal state transition rejected: payment_id=%s current=%s requested=%s",
+                payment.id, payment.status, data.status
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot transition payment from terminal status '{payment.status}'."
@@ -165,6 +190,10 @@ def process_payment_confirmation(
                 db.add(project)
                 db.commit()
                 db.refresh(payment)
+                logger.info(
+                    "Payment succeeded and project credited: payment_id=%s amount=%s project_id=%s amount_raised=%s",
+                    payment.id, donation.amount, project.id, project.amount_raised
+                )
                 return payment
 
             else:
@@ -186,6 +215,7 @@ def process_payment_confirmation(
                 db.add(donation)
                 db.commit()
                 db.refresh(payment)
+                logger.info("Payment marked as %s: payment_id=%s", data.status.value, payment.id)
 
                 return payment
 
@@ -230,5 +260,5 @@ def get_project_donations_summary(db: Session, project_id: uuid.UUID) -> dict:
         "project_id": project_id,
         "total_successful_donations": result.total_count,
         "total_amount_raised": result.total_amount,
-        "currency": "NGN",
+        "currency": project.currency,
     }

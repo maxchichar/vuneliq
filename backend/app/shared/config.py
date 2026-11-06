@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Vuneliq API"
     ENVIRONMENT: str
     DEBUG: bool = True
+    LOG_LEVEL: str = "INFO"
 
 
     # Database URL (required)
