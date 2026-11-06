@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.modules.identity.models
 import app.modules.projects.models
+import app.modules.donations.models
+
+from app.modules.donations.router import donations_router
 from app.modules.identity.router import router as identity_router
 from app.modules.projects.router import (
     admin_projects_router,
@@ -37,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router, prefix="/api")
     app.include_router(my_projects_router, prefix="/api")
     app.include_router(admin_projects_router, prefix="/api")
+    app.include_router(donations_router, prefix="/api")
     
 
     @app.get("/health", tags=["System"])
