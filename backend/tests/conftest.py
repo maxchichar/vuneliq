@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.modules.identity.models
 import app.modules.projects.models
+import app.modules.donations.models
 
 from app.main import create_app
 from app.shared.database import Base, get_db
@@ -38,7 +39,8 @@ def db_session() -> Generator[Session, None, None]:
     yield session
 
     session.close()
-    transaction.rollback()
+    if transaction.is_active:
+        transaction.rollback()  
     connection.close()
 
 
