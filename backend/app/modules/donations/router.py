@@ -17,6 +17,7 @@ from app.modules.donations.services import (
     process_payment_confirmation
 )
 from app.modules.identity.models import User, UserRole
+from app.shared.config import settings
 from app.shared.database import get_db
 from app.shared.dependencies import get_current_user
 from app.shared.logging import get_module_logger
@@ -60,7 +61,14 @@ def simulate_payment_result(
 ): 
     """
     Simulates sandbox payment result with atomic state transition and idempotency.
+    Disabled in production to prevent unauthorized fundraising inflation.
     """
+    if settings.ENVIRONMENT.lower() == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Payment simulation is disabled in production environments."
+        )
+
     return process_payment_confirmation(db, payment_id, request)
 
 @donations_router.get("/my/donations", response_model=list[DonationRead])

@@ -1,6 +1,7 @@
 import uuid
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 
@@ -96,32 +97,34 @@ def initiate_donation(
             detail=f"Cannot donate: Project is currently in '{project.status}' status and not open for public donations."
         )
 
-    # Atomic Write Transaction
+    # Atomic Write Transaction with Savepoint for race-condition resilience
     try:
-        # Create Donation record
-        donation = Donation(
-            idempotency_key=idempotency_key,
-            donor_id=donor_id,
-            project_id=project_id,
-            amount=data.amount,
-            currency=normalised_currency,
-            is_anonymous=data.is_anonymous,
-            status=DonationStatus.PENDING
-        )
-        db.add(donation)
-        db.flush()
+        with db.begin_nested():
+            # Create Donation record
+            donation = Donation(
+                idempotency_key=idempotency_key,
+                donor_id=donor_id,
+                project_id=project_id,
+                amount=data.amount,
+                currency=normalised_currency,
+                is_anonymous=data.is_anonymous,
+                status=DonationStatus.PENDING
+            )
+            db.add(donation)
+            db.flush()
 
-        # Create Payment record with unique reference
-        reference = f"VUN-{uuid.uuid4().hex[:12].upper()}"
-        payment = Payment(
-            donation_id=donation.id,
-            reference=reference,
-            amount=data.amount,
-            currency=normalised_currency,
-            status=PaymentStatus.PENDING,
-            payment_method=data.payment_method.value if hasattr(data.payment_method, "value") else str(data.payment_method),
-        )
-        db.add(payment)
+            # Create Payment record with unique reference
+            reference = f"VUN-{uuid.uuid4().hex[:12].upper()}"
+            payment = Payment(
+                donation_id=donation.id,
+                reference=reference,
+                amount=data.amount,
+                currency=normalised_currency,
+                status=PaymentStatus.PENDING,
+                payment_method=data.payment_method.value if hasattr(data.payment_method, "value") else str(data.payment_method),
+            )
+            db.add(payment)
+            db.flush()
 
         # Atomic commit
         db.commit()
@@ -132,6 +135,40 @@ def initiate_donation(
             donation.id, payment.id, donation.amount, donation.currency, project_id
         )
         return donation, payment
+
+    except IntegrityError:
+        # Savepoint rolled back the duplicate insertion cleanly
+        # Handle concurrent race condition: another concurrent request committed with the same key
+        existing_stmt = select(Donation).where(Donation.idempotency_key == idempotency_key)
+        existing_donation = db.scalar(existing_stmt)
+        if existing_donation:
+            if existing_donation.donor_id != donor_id:
+                logger.warning(
+                    "Concurrent idempotency collision: key=%s requester=%s owner=%s",
+                    idempotency_key, donor_id, existing_donation.donor_id
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Idempotency key belongs to another user."
+                )
+
+            if (
+                existing_donation.project_id != project_id
+                or existing_donation.amount != data.amount
+                or existing_donation.currency != normalised_currency
+            ):
+                logger.warning(
+                    "Concurrent idempotency mutation: key=%s amount=%s project=%s",
+                    idempotency_key, data.amount, project_id
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Idempotency key already used with different request parameters."
+                )
+
+            logger.info("Concurrent idempotency race resolved: returning committed donation id=%s", existing_donation.id)
+            return existing_donation, existing_donation.payments[0]
+        raise
 
     except Exception as exc: 
         # Atomic rollback

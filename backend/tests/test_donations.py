@@ -413,3 +413,63 @@ def test_get_project_donations_summary(client: TestClient, db_session: Session):
     non_existent = uuid.uuid4()
     s3 = client.get(f"/api/projects/{non_existent}/donations/summary")
     assert s3.status_code == 404
+
+
+def test_simulation_disabled_in_production(client: TestClient, db_session: Session):
+    """Rule: Payment simulation is disabled in production to prevent fraudulent fundraising totals."""
+    project = seed_project(db_session, ProjectStatus.APPROVED)
+    donor_token = create_donor_token(client, "donor_prod_sim@vuneliq.org")
+
+    donation_res = client.post(
+        f"/api/projects/{project.id}/donations",
+        json={"amount": 500000},
+        headers={
+            "Authorization": f"Bearer {donor_token}",
+            "Idempotency-Key": f"test-prod-{uuid.uuid4().hex}",
+        },
+    ).json()
+    payment_id = donation_res["payments"][0]["id"]
+
+    # Mock settings.ENVIRONMENT to production
+    with patch("app.modules.donations.router.settings.ENVIRONMENT", "production"):
+        res = client.post(
+            f"/api/payments/{payment_id}/simulate-result",
+            json={"status": "succeeded"},
+        )
+        assert res.status_code == 403
+        assert "disabled in production" in res.json()["detail"].lower()
+
+
+def test_concurrent_idempotency_race_condition_handled(client: TestClient, db_session: Session):
+    """
+    Verifies that if an IntegrityError occurs during commit (simulating a concurrent insert
+    of the same idempotency key), the system rolls back and returns the committed donation.
+    """
+    from sqlalchemy.exc import IntegrityError
+    from app.modules.donations.schemas import DonationCreateRequest
+    from app.modules.donations.services import initiate_donation
+
+    project = seed_project(db_session, ProjectStatus.APPROVED)
+    donor = db_session.scalar(select(User).where(User.email.like("owner_%")))
+    idempotency_key = f"race-key-{uuid.uuid4().hex}"
+    req = DonationCreateRequest(amount=500000, currency="NGN")
+
+    # 1. Establish the committed donation first
+    d1, _ = initiate_donation(db_session, project.id, donor.id, req, idempotency_key=idempotency_key)
+    assert d1.id is not None
+
+    # 2. Simulate concurrent collision:
+    # Initial lookup misses (returns a dummy query), and db.commit raises IntegrityError
+    orig_select = select
+    call_count = {"n": 0}
+
+    def fake_select(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return orig_select(Donation).where(Donation.id == uuid.uuid4())
+        return orig_select(*args, **kwargs)
+
+    with patch.object(db_session, "commit", side_effect=IntegrityError("UNIQUE constraint failed", None, None)):
+        with patch("app.modules.donations.services.select", side_effect=fake_select):
+            d2, _ = initiate_donation(db_session, project.id, donor.id, req, idempotency_key=idempotency_key)
+            assert d2.id == d1.id
