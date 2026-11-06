@@ -1,3 +1,28 @@
+.venv/
+venv/
+backend/.venv/
+backend/venv/
+
+# Secrets & Environment variables
+.env
+backend/.env
+*.env
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Databases
+*.db
+*.sqlite3
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+
 .env
 .venv/
 *.pdf
