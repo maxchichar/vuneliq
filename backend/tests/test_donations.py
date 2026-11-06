@@ -310,3 +310,106 @@ def test_missing_idempotency_header_rejected_with_422(client: TestClient, db_ses
     )
     assert res.status_code == 422
     assert "idempotency-key" in res.text.lower()
+
+
+def test_idempotency_key_payload_mutation_rejected_with_409(client: TestClient, db_session: Session):
+    """Reusing the same Idempotency-Key with altered parameters must return 409 Conflict."""
+    project = seed_project(db_session, ProjectStatus.APPROVED)
+    donor_token = create_donor_token(client, "donor_payload_mutation@vuneliq.org")
+    headers = {
+        "Authorization": f"Bearer {donor_token}",
+        "Idempotency-Key": "test-mutation-key-9999",
+    }
+    
+    # 1. Original donation of 500,000 kobo
+    res1 = client.post(
+        f"/api/projects/{project.id}/donations",
+        json={"amount": 500000, "currency": "NGN"},
+        headers=headers,
+    )
+    assert res1.status_code == 201
+
+    # 2. Replay with SAME key, but altered amount (700,000 kobo)
+    res2 = client.post(
+        f"/api/projects/{project.id}/donations",
+        json={"amount": 700000, "currency": "NGN"},
+        headers=headers,
+    )
+    assert res2.status_code == 409
+    assert "different request parameters" in res2.json()["detail"].lower()
+
+
+def test_currency_mismatch_rejected(client: TestClient, db_session: Session):
+    """Attempting to donate in USD to an NGN project must return 400 Bad Request."""
+    project = seed_project(db_session, ProjectStatus.APPROVED)
+    donor_token = create_donor_token(client, "donor_currency_mismatch@vuneliq.org")
+
+    res = client.post(
+        f"/api/projects/{project.id}/donations",
+        json={"amount": 500000, "currency": "USD"},
+        headers={
+            "Authorization": f"Bearer {donor_token}",
+            "Idempotency-Key": f"test-curr-{uuid.uuid4().hex}",
+        },
+    )
+    assert res.status_code == 400
+    assert "currency mismatch" in res.json()["detail"].lower()
+
+
+def test_terminal_payment_state_cannot_be_overwritten(client: TestClient, db_session: Session):
+    """A failed payment cannot be transitioned to succeeded."""
+    project = seed_project(db_session, ProjectStatus.APPROVED)
+    donor_token = create_donor_token(client, "donor_terminal_state@vuneliq.org")
+
+    donation_res = client.post(
+        f"/api/projects/{project.id}/donations",
+        json={"amount": 500000},
+        headers={
+            "Authorization": f"Bearer {donor_token}",
+            "Idempotency-Key": f"test-term-{uuid.uuid4().hex}",
+        },
+    )
+    payment_id = donation_res.json()["payments"][0]["id"]
+
+    # Transition to failed
+    fail_res = client.post(f"/api/payments/{payment_id}/simulate-result", json={"status": "failed"})
+    assert fail_res.status_code == 200
+
+    # Attempt to transition failed -> succeeded must be rejected
+    res = client.post(f"/api/payments/{payment_id}/simulate-result", json={"status": "succeeded"})
+    assert res.status_code == 400
+    assert "terminal status" in res.json()["detail"].lower()
+
+
+def test_get_project_donations_summary(client: TestClient, db_session: Session):
+    """Verifies that the summary endpoint returns accurate counts, sums, and 404s for invalid projects."""
+    project = seed_project(db_session, ProjectStatus.APPROVED)
+    donor_token = create_donor_token(client, "donor_summary_tester@vuneliq.org")
+
+    # Initial summary: 0 donations
+    s1 = client.get(f"/api/projects/{project.id}/donations/summary")
+    assert s1.status_code == 200
+    assert s1.json()["total_successful_donations"] == 0
+    assert s1.json()["total_amount_raised"] == 0
+
+    # Add and confirm a donation of 1,500,000 kobo
+    d1 = client.post(
+        f"/api/projects/{project.id}/donations",
+        json={"amount": 1500000},
+        headers={
+            "Authorization": f"Bearer {donor_token}",
+            "Idempotency-Key": f"test-sum-{uuid.uuid4().hex}",
+        },
+    ).json()
+    client.post(f"/api/payments/{d1['payments'][0]['id']}/simulate-result", json={"status": "succeeded"})
+
+    # Summary should reflect 1 donation and 1,500,000
+    s2 = client.get(f"/api/projects/{project.id}/donations/summary")
+    assert s2.status_code == 200
+    assert s2.json()["total_successful_donations"] == 1
+    assert s2.json()["total_amount_raised"] == 1500000
+
+    # Summary for non-existent project returns 404
+    non_existent = uuid.uuid4()
+    s3 = client.get(f"/api/projects/{non_existent}/donations/summary")
+    assert s3.status_code == 404

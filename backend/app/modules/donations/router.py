@@ -34,6 +34,7 @@ def create_donation(
     idempotency_key: str = Header(
         ..., 
         alias="Idempotency-key",
+        min_length=8,
         description="Mandatory client-generated UUID to guarantee transaction idempotency",
     ),
     current_user: User = Depends(get_current_user),

@@ -6,9 +6,9 @@ from app.modules.donations.models import DonationStatus, PaymentStatus, PaymentM
 
 
 class DonationCreateRequest(BaseModel):
-    # Rule 6: Amount must be greater than 0
-    amount: int = Field(..., gt=0, description="Amount in integer uints (e.g. 500000 kobo = 5000 NGN)")
-    currency: str = Field(default="NGN", max_length=10)
+    # Rule 6: Amount must be greater than 0 and less than or equal to 1billion
+    amount: int = Field(..., gt=0, le=100_000_000_000, description="Amount in integer uints (e.g. 500000 kobo = 5000 NGN)")
+    currency: str = Field(default="NGN", min_length=3, max_length=10)
     is_anonymous: bool = Field(default=False)
     payment_method: PaymentMethod = Field(default=PaymentMethod.SIMULATED)
 

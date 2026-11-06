@@ -27,11 +27,28 @@ def initiate_donation(
     Enforces Rule 1 (approved only) and Rule 2 (not suspended).
     """
 
-    # Idempotency Check: Return existing donation if key was already processed
+    # Idempotency Check & Payload Mutation Guard: Return existing donation if key was already processed
     if idempotency_key:
         existing_stmt = select(Donation).where(Donation.idempotency_key == idempotency_key)
         existing_donation = db.scalar(existing_stmt)
         if existing_donation:
+            if existing_donation.donor_id != donor_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Idempotency key belongs to another user."
+                )
+
+            normalised_currency = data.currency.upper().strip()
+            if (
+                existing_donation.project_id != project_id
+                or existing_donation.amount != data.amount
+                or existing_donation.currency != normalised_currency
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Idempotency key already used with different request parameters."
+                )
+                
             return existing_donation, existing_donation.payments[0]
 
     # Check project eligibility
@@ -40,6 +57,14 @@ def initiate_donation(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+
+    # Currency match validation
+    normalised_currency = data.currency.upper().strip()
+    if normalised_currency != project.currency.upper().strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Currency mismatch: Project accepts {project.currency}, but received {data.currency}."
+        )
 
     # Rule 1: Cannot donate to unapproved projects
     if project.status != ProjectStatus.APPROVED:
@@ -63,7 +88,7 @@ def initiate_donation(
             donor_id=donor_id,
             project_id=project_id,
             amount=data.amount,
-            currency=data.currency.upper().strip(),
+            currency=normalised_currency,
             is_anonymous=data.is_anonymous,
             status=DonationStatus.PENDING
         )
@@ -76,7 +101,7 @@ def initiate_donation(
             donation_id=donation.id,
             reference=reference,
             amount=data.amount,
-            currency=data.currency.upper().strip(),
+            currency=normalised_currency,
             status=PaymentStatus.PENDING,
             payment_method=data.payment_method.value if hasattr(data.payment_method, "value") else str(data.payment_method),
         )
@@ -99,6 +124,7 @@ def process_payment_confirmation(
     """
     Processes payment status updates in an atomic ACID transaction.
     Guarantees that concurrent in-flight calls and sequential replays NEVER double-credit!
+    Guards against mutating already-terminal failed/cancelled payments.
     """
 
     payment = db.scalar(select(Payment).where(Payment.id == payment_id))
@@ -108,8 +134,17 @@ def process_payment_confirmation(
     donation = payment.donation
     project = donation.project
 
-    # Rule 9: Sequential replay check
+    # Rule 9: Sequential replay check for succeede payment
     if payment.status == PaymentStatus.SUCCEEDED:
+        return payment
+
+    # Guard: Terminal failure/cancellation cannot be overwritten
+    if payment.status in (PaymentStatus.FAILED, PaymentStatus.CANCELLED):
+        if data.status != payment.status:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot transition payment from terminal status '{payment.status}'."
+            )
         return payment
 
     try:
@@ -177,9 +212,14 @@ def list_donor_donations(db: Session, donor_id: uuid.UUID) -> list[Donation]:
     return list(db.scalars(stmt).all())
 
 def get_project_donations_summary(db: Session, project_id: uuid.UUID) -> dict:
+    """Calculates public verified aggregates. Checks project existence and fixes typo."""
+    project = db.scalar(select(Project).where(Project.id == project_id))
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    
     stmt = select(
         func.count(Donation.id).label("total_count"),
-        func.coalesce(func.sum(Donation.amount), 0).lable("total_amount")
+        func.coalesce(func.sum(Donation.amount), 0).label("total_amount")
     ).where(
         Donation.project_id == project_id,
         Donation.status == DonationStatus.SUCCEEDED
