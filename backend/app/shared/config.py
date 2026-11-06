@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     # Long lived refresh token: 7 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    #ai key of the llm
+    AI_API_KEY: str
+
+    #
+    AI_MODEL: str
+    #Guardrail" longest text we will send to the AI.
+    AI_MAX_INPUT_CHARS: int = 500
+
+    # Maximum ai requests allowed per minutes
+    AI_RATE_LIMIT_PER_MINUTE: int = 5
+    # Daily qouta limit for ai operations
+    AI_RATE_LIMIT_PER_DAY: int = 50
+
     # CORS settings: list of origins allowed to talk to this API
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:3000",

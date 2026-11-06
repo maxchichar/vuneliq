@@ -11,6 +11,7 @@ from app.modules.projects.router import (
 )
 from app.shared.config import settings
 from app.shared.database import Base, engine
+from app.modules.ai.router import router as ai_router
 
 
 def create_app() -> FastAPI:
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router, prefix="/api")
     app.include_router(my_projects_router, prefix="/api")
     app.include_router(admin_projects_router, prefix="/api")
+    app.include_router(ai_router, prefix="/api")
     
 
     @app.get("/health", tags=["System"])
