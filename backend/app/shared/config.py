@@ -30,11 +30,9 @@ class Settings(BaseSettings):
     # Long lived refresh token: 7 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    #ai key of the llm
-    AI_API_KEY: str
-
-    #
-    AI_MODEL: str
+    # AI settings
+    AI_API_KEY: str = ""
+    AI_MODEL: str = "mock-model"
     #Guardrail" longest text we will send to the AI.
     AI_MAX_INPUT_CHARS: int = 500
 
