@@ -33,10 +33,15 @@ class Settings(BaseSettings):
     # AI provider API key; leave empty to use the mock provider
     AI_API_KEY: str = ""
 
-    # AI model name used by the real provider
+    # OpenAI model name used by the real provider (required when AI_API_KEY is set)
     AI_MODEL: str = ""
-    #Guardrail" longest text we will send to the AI.
+    # Guardrail: longest text we will send to the AI.
     AI_MAX_INPUT_CHARS: int = 500
+    # Guardrails on each provider call: timeout, SDK retries, output size/cost
+    AI_TIMEOUT_SECONDS: float = 15.0
+    AI_MAX_RETRIES: int = 2
+    AI_MAX_OUTPUT_TOKENS: int = 300
+    AI_MAX_OUTPUT_CHARS: int = 1000
 
     # Maximum ai requests allowed per minutes
     AI_RATE_LIMIT_PER_MINUTE: int = 5

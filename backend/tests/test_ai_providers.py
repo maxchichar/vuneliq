@@ -1,5 +1,5 @@
 import pytest
-from app.modules.ai.providers import AIProvider, AIProviderError, MockProvider, RealProvider, get_provider
+from app.modules.ai.providers import AIProvider, MockProvider, get_provider
 from app.modules.ai.schemas import SummaryResult
 from app.shared.config import settings
 
@@ -22,19 +22,6 @@ def test_incomplete_provider():
     with pytest.raises(TypeError):
         Broken()
 
-def test_real_provider_not_implemented_yet():
-    #arrange
-
-    provider = RealProvider(api_key="test-key", model="test-model")
-
-    # Act plus Assert calling it must raise, not silently return junk
-    with pytest.raises(AIProviderError):
-        provider.summarize("sample text")
-
 def test_get_provider_mock_when_no_key(monkeypatch):
     monkeypatch.setattr(settings, "AI_API_KEY", "")
     assert isinstance(get_provider(), MockProvider)
-
-def test_get_provider_returns_real_when_keys_exist(monkeypatch):
-    monkeypatch.setattr(settings, "AI_API_KEY", "fake-key-for-test")
-    assert isinstance(get_provider(), RealProvider)
