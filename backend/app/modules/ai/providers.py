@@ -14,7 +14,7 @@ class AIProvider(ABC):
 class MockProvider(AIProvider):
     def summarize(self, text: str) -> SummaryResult:
         # Not real ai, we just cut the text short and label it clearly.
-        return SummaryResult(summary=f"[DEMO WORK] {text:100}", is_mock=True)
+        return SummaryResult(summary=f"[DEMO WORK] {text[:100]}", is_mock=True)
 class RealProvider(AIProvider):
     """ empty for now """
     def __init__(self, api_key: str, model: str):
@@ -22,7 +22,8 @@ class RealProvider(AIProvider):
         self.model = model
         
     def summarize(self, text: str) -> SummaryResult:
-        raise NotImplementedError
+        # Not wired to a real AI service yet: fail as a clean 502, not a 500.
+        raise AIProviderError("RealProvider is not implemented yet")
 
 def get_provider() -> AIProvider:
     if settings.AI_API_KEY:

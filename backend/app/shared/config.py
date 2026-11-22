@@ -30,11 +30,11 @@ class Settings(BaseSettings):
     # Long lived refresh token: 7 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    #ai key of the llm
-    AI_API_KEY: str
+    # AI provider API key; leave empty to use the mock provider
+    AI_API_KEY: str = ""
 
-    #
-    AI_MODEL: str
+    # AI model name used by the real provider
+    AI_MODEL: str = ""
     #Guardrail" longest text we will send to the AI.
     AI_MAX_INPUT_CHARS: int = 500
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.modules.ai.providers import AIProviderError
 from app.modules.ai.schemas import SummarizeRequest, SummaryResult
-from app.modules.ai.services import AIIinputError, summarize_impact
+from app.modules.ai.services import AIInputError, summarize_impact
 from app.modules.identity.models import User
 from app.shared.dependencies import get_current_user
 from app.modules.ai.rate_limit import AIRateLimitError, limiter
@@ -34,7 +34,7 @@ def summarize(
 ):
     try:
         return summarize_impact(req.text)
-    except AIIinputError as exc:
+    except AIInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except AIProviderError:
         raise HTTPException(

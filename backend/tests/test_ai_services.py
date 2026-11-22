@@ -2,7 +2,7 @@ import pytest
 
 from app.modules.ai.providers import AIProvider
 from app.modules.ai.schemas import SummaryResult
-from app.modules.ai.services import AIIinputError, summarize_impact
+from app.modules.ai.services import AIInputError, summarize_impact
 from app.shared.config import settings
 
 
@@ -22,13 +22,13 @@ def spy(monkeypatch):
     return provider
 @pytest.mark.parametrize("bad_text", ["", "   ", "\n\n\t"])
 def test_empty_text_is_rejected_before_calling_ai(spy, bad_text):
-    with pytest.raises(AIIinputError):
+    with pytest.raises(AIInputError):
         summarize_impact(bad_text)
     assert spy.called is False
 
 def test_too_long(spy, monkeypatch):
     monkeypatch.setattr(settings, "AI_MAX_INPUT_CHARS", 10)
-    with pytest.raises(AIIinputError):
+    with pytest.raises(AIInputError):
         summarize_impact("x" * 11)
     assert spy.called is False
 

@@ -1,5 +1,5 @@
 import pytest
-from app.modules.ai.providers import AIProvider, MockProvider, RealProvider, get_provider
+from app.modules.ai.providers import AIProvider, AIProviderError, MockProvider, RealProvider, get_provider
 from app.modules.ai.schemas import SummaryResult
 from app.shared.config import settings
 
@@ -10,6 +10,10 @@ def test_mock_return_the_shape():
     #same shape as every provider, and honest about being fake
     assert isinstance(result, SummaryResult)
     assert result.is_mock is True
+
+def test_mock_truncates_long_text():
+    result = MockProvider().summarize("x" * 300)
+    assert result.summary == "[DEMO WORK] " + "x" * 100
 
 def test_incomplete_provider():
     #forgot to write summarize()
@@ -24,7 +28,7 @@ def test_real_provider_not_implemented_yet():
     provider = RealProvider(api_key="test-key", model="test-model")
 
     # Act plus Assert calling it must raise, not silently return junk
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(AIProviderError):
         provider.summarize("sample text")
 
 def test_get_provider_mock_when_no_key(monkeypatch):
