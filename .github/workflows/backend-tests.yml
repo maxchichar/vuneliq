@@ -1,0 +1,33 @@
+name: Backend tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # Placeholder values only; tests use an in-memory SQLite DB and the mock AI provider.
+      ENVIRONMENT: test
+      DEBUG: "false"
+      DATABASE_URL: sqlite:///./ci.db
+      SECRET_KEY: ci-only-not-a-secret-ci-only-not-a-secret
+      AI_API_KEY: ""
+      AI_MODEL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q

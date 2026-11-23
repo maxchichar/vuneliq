@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "rpi-production-engineering": {
+      "source": "maxchichar/rpi-production-engineering",
+      "commit": "dc3e9278e974c5507557b31a7868223d1a7dabd2",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "ce76384b055e8a1be432616d41957796c0f3c0c0d726f2758d831af4bc890f22"
+    }
+  }
+}
