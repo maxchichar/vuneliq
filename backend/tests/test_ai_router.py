@@ -56,3 +56,14 @@ def test_provider_failure_returns_502_without_leaking_details(
     )
     assert res.status_code == 502
     assert "sk-123" not in res.text  # internal details must not leak
+
+def test_key_without_model_returns_502(client: TestClient, monkeypatch):
+    monkeypatch.setattr("app.modules.ai.providers.settings.AI_API_KEY", "fake-key")
+    monkeypatch.setattr("app.modules.ai.providers.settings.AI_MODEL", "")
+    token = get_token(client, email="donor_ai_key@vuneliq.org")
+    res = client.post(
+        "/api/ai/summarize",
+        json={"text": "some text"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 502
